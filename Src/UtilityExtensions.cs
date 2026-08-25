@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 
 namespace VulkanCore
 {
@@ -56,9 +55,14 @@ namespace VulkanCore
         /// <exception cref="ArgumentNullException"><paramref name="layers"/> is <c>null</c>.</exception>
         public static bool Contains(this IEnumerable<LayerProperties> layers, string name)
         {
-            return layers
-                .Select(layer => layer.LayerName)
-                .Contains(name, StringComparer.Ordinal);
+            if (layers == null)
+                throw new ArgumentNullException(nameof(layers));
+
+            foreach (LayerProperties layer in layers)
+                if (StringComparer.Ordinal.Equals(layer.LayerName, name))
+                    return true;
+
+            return false;
         }
 
         /// <summary>
@@ -74,9 +78,14 @@ namespace VulkanCore
         /// <exception cref="ArgumentNullException"><paramref name="extensions"/> is <c>null</c>.</exception>
         public static bool Contains(this IEnumerable<ExtensionProperties> extensions, string name)
         {
-            return extensions
-                .Select(extension => extension.ExtensionName)
-                .Contains(name, StringComparer.Ordinal);
+            if (extensions == null)
+                throw new ArgumentNullException(nameof(extensions));
+
+            foreach (ExtensionProperties extension in extensions)
+                if (StringComparer.Ordinal.Equals(extension.ExtensionName, name))
+                    return true;
+
+            return false;
         }
     }
 }

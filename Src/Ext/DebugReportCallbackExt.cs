@@ -17,7 +17,7 @@ namespace VulkanCore.Ext
             Parent = parent;
             Allocator = allocator;
 
-            Func<DebugReportCallbackInfo, bool> createInfoCallback = createInfo.Callback;
+            DebugReportCallbackHandler createInfoCallback = createInfo.Callback;
             IntPtr callbackHandle = IntPtr.Zero;
             if (createInfoCallback != null)
             {
@@ -73,6 +73,15 @@ namespace VulkanCore.Ext
     }
 
     /// <summary>
+    /// Application callback function for debug report messages.
+    /// </summary>
+    /// <param name="callbackInfo">Information about the debug report message.</param>
+    /// <returns>
+    /// <c>true</c> if the Vulkan call that triggered the validation layer message should be aborted.
+    /// </returns>
+    public delegate bool DebugReportCallbackHandler(DebugReportCallbackInfo callbackInfo);
+
+    /// <summary>
     /// Structure specifying parameters of a newly created debug report callback.
     /// <para>
     /// For each <see cref="DebugReportCallbackCreateInfoExt"/> that is created the flags determine
@@ -101,7 +110,7 @@ namespace VulkanCore.Ext
         /// <summary>
         /// The application callback function to call.
         /// </summary>
-        public Func<DebugReportCallbackInfo, bool> Callback;
+        public DebugReportCallbackHandler Callback;
         /// <summary>
         /// User data to be passed to the callback.
         /// </summary>
@@ -118,7 +127,7 @@ namespace VulkanCore.Ext
         /// <param name="userData">User data to be passed to the callback.</param>
         public DebugReportCallbackCreateInfoExt(
             DebugReportFlagsExt flags,
-            Func<DebugReportCallbackInfo, bool> callback,
+            DebugReportCallbackHandler callback,
             IntPtr userData = default(IntPtr))
         {
             Flags = flags;

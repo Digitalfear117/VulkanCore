@@ -4,6 +4,22 @@ using System.Runtime.InteropServices;
 namespace VulkanCore.Nvx
 {
     /// <summary>
+    /// Contains device-generated commands related properties of a physical device.
+    /// </summary>
+    public struct GeneratedCommandsPropertiesNvx
+    {
+        /// <summary>
+        /// Gets the device-generated commands features.
+        /// </summary>
+        public DeviceGeneratedCommandsFeaturesNvx Features;
+
+        /// <summary>
+        /// Gets the device-generated commands limits.
+        /// </summary>
+        public DeviceGeneratedCommandsLimitsNvx Limits;
+    }
+
+    /// <summary>
     /// Provides NVIDIA specific extension methods for the <see cref="PhysicalDevice"/> class.
     /// </summary>
     public static unsafe class PhysicalDeviceExtensions
@@ -15,13 +31,17 @@ namespace VulkanCore.Nvx
         /// The handle to the physical device whose properties will be queried.
         /// </param>
         /// <returns>Structures that will be filled with returned information.</returns>
-        public static (DeviceGeneratedCommandsFeaturesNvx, DeviceGeneratedCommandsLimitsNvx) GetGeneratedCommandsPropertiesNvx(
-            this PhysicalDevice physicalDevice)
+        public static GeneratedCommandsPropertiesNvx GetGeneratedCommandsPropertiesNvx(this PhysicalDevice physicalDevice)
         {
             DeviceGeneratedCommandsFeaturesNvx features;
             DeviceGeneratedCommandsLimitsNvx limits;
             vkGetPhysicalDeviceGeneratedCommandsPropertiesNVX(physicalDevice)(physicalDevice, &features, &limits);
-            return (features, limits);
+
+            return new GeneratedCommandsPropertiesNvx
+            {
+                Features = features,
+                Limits = limits
+            };
         }
 
         private delegate void vkGetPhysicalDeviceGeneratedCommandsPropertiesNVXDelegate(IntPtr physicalDevice, DeviceGeneratedCommandsFeaturesNvx* features, DeviceGeneratedCommandsLimitsNvx* limits);

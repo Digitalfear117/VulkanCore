@@ -1,9 +1,10 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Runtime.InteropServices;
+#if !NETFRAMEWORK
 using static System.Runtime.InteropServices.OSPlatform;
 using static System.Runtime.InteropServices.RuntimeInformation;
+#endif
 
 namespace VulkanCore
 {
@@ -28,17 +29,30 @@ namespace VulkanCore
 
         static VulkanLibrary()
         {
-            _handle = GetVulkanLibraryNameCandidates()
-                .Select(LoadLibrary)
-                .FirstOrDefault(handle => handle != IntPtr.Zero);
+            foreach (string libraryName in GetVulkanLibraryNameCandidates())
+            {
+                IntPtr handle = LoadLibrary(libraryName);
+
+                if (handle != IntPtr.Zero)
+                {
+                    _handle = handle;
+                    break;
+                }
+            }
+
             if (_handle == IntPtr.Zero)
-                throw new NotImplementedException("Vulkan native library was not found.");
+                throw new NotImplementedException(
+                    "Vulkan native library was not found.");
         }
 
         public static TDelegate GetStaticProc<TDelegate>(string procName)
             where TDelegate : class
         {
             IntPtr handle;
+
+#if NETFRAMEWORK
+            handle = Kernel32GetProcAddress(_handle, procName);
+#else
             if (IsOSPlatform(Windows))
             {
                 handle = Kernel32GetProcAddress(_handle, procName);
@@ -51,6 +65,8 @@ namespace VulkanCore
             {
                 throw new NotImplementedException();
             }
+#endif
+
             return handle == IntPtr.Zero
                 ? null
                 : Interop.GetDelegateForFunctionPointer<TDelegate>(handle);
@@ -58,6 +74,9 @@ namespace VulkanCore
 
         private static IntPtr LoadLibrary(string fileName)
         {
+#if NETFRAMEWORK
+            return Kernel32LoadLibrary(fileName);
+#else
             IntPtr handle;
             if (IsOSPlatform(Windows))
             {
@@ -72,10 +91,14 @@ namespace VulkanCore
                 throw new NotImplementedException();
             }
             return handle;
+#endif
         }
 
         private static IEnumerable<string> GetVulkanLibraryNameCandidates()
         {
+#if NETFRAMEWORK
+            yield return "vulkan-1.dll";
+#else
             if (IsOSPlatform(Windows))
             {
                 yield return "vulkan-1.dll";
@@ -89,6 +112,8 @@ namespace VulkanCore
             {
                 yield return "libMoltenVK.dylib"; // Using MoltenVK on MacOS.
             }
+#endif
+
             throw new NotImplementedException("Ran out of places to look for the vulkan native library");
         }
 
@@ -98,6 +123,7 @@ namespace VulkanCore
         [DllImport("kernel32", EntryPoint = "GetProcAddress")]
         private static extern IntPtr Kernel32GetProcAddress(IntPtr module, string procName);
 
+#if !NETFRAMEWORK
         [DllImport("libdl", EntryPoint = "dlopen")]
         private static extern IntPtr LibDLLoadLibrary(string fileName, int flags);
 
@@ -105,5 +131,6 @@ namespace VulkanCore
         private static extern IntPtr LibDLGetProcAddress(IntPtr handle, string name);
 
         private const int LibDLRtldNow = 2;
+#endif
     }
 }

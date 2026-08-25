@@ -1,7 +1,7 @@
 #pragma warning disable CS0618 // Type or member is obsolete.
 
 using System;
-using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using static VulkanCore.Constant;
 
@@ -12,11 +12,14 @@ namespace VulkanCore
     /// </summary>
     public unsafe class Device : DisposableHandle<IntPtr>
     {
-        private readonly ConcurrentDictionary<string, IntPtr> _procAddrCache
-            = new ConcurrentDictionary<string, IntPtr>(StringComparer.Ordinal);
+        private readonly Dictionary<string, IntPtr> _procAddrCache
+            = new Dictionary<string, IntPtr>(StringComparer.Ordinal);
 
-        private readonly ConcurrentDictionary<Type, object> _procCache
-            = new ConcurrentDictionary<Type, object>();
+        private readonly Dictionary<Type, object> _procCache
+            = new Dictionary<Type, object>();
+
+        private readonly object _procAddrCacheLock = new object();
+        private readonly object _procCacheLock = new object();
 
         internal Device(PhysicalDevice parent, ref DeviceCreateInfo createInfo, ref AllocationCallbacks? allocator)
         {
@@ -54,14 +57,20 @@ namespace VulkanCore
         /// <exception cref="ArgumentNullException"><paramref name="name"/> is <c>null</c>.</exception>
         public IntPtr GetProcAddr(string name)
         {
-            if (!_procAddrCache.TryGetValue(name, out IntPtr addr))
+            IntPtr addr;
+
+            lock (_procAddrCacheLock)
             {
-                int byteCount = Interop.String.GetMaxByteCount(name);
-                var dstPtr = stackalloc byte[byteCount];
-                Interop.String.ToPointer(name, dstPtr, byteCount);
-                addr = vkGetDeviceProcAddr(this, dstPtr);
-                _procAddrCache.TryAdd(name, addr);
+                if (!_procAddrCache.TryGetValue(name, out addr))
+                {
+                    int byteCount = Interop.String.GetMaxByteCount(name);
+                    var dstPtr = stackalloc byte[byteCount];
+                    Interop.String.ToPointer(name, dstPtr, byteCount);
+                    addr = vkGetDeviceProcAddr(this, dstPtr);
+                    _procAddrCache.Add(name, addr);
+                }
             }
+
             return addr;
         }
 
@@ -85,15 +94,19 @@ namespace VulkanCore
             if (name == null)
                 throw new ArgumentNullException(nameof(name));
 
-            if (_procCache.TryGetValue(typeof(TDelegate), out object cachedProc))
-                return (TDelegate)cachedProc;
+            lock (_procCacheLock)
+            {
+                object cachedProc;
+                if (_procCache.TryGetValue(typeof(TDelegate), out cachedProc))
+                    return (TDelegate)cachedProc;
 
-            IntPtr ptr = GetProcAddr(name);
-            TDelegate proc = ptr != IntPtr.Zero
-                ? Interop.GetDelegateForFunctionPointer<TDelegate>(ptr)
-                : null;
-            _procCache.TryAdd(typeof(TDelegate), proc);
-            return proc;
+                IntPtr ptr = GetProcAddr(name);
+                TDelegate proc = ptr != IntPtr.Zero
+                    ? Interop.GetDelegateForFunctionPointer<TDelegate>(ptr)
+                    : null;
+                _procCache.Add(typeof(TDelegate), proc);
+                return proc;
+            }
         }
 
         /// <summary>

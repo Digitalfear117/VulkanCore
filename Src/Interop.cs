@@ -1,6 +1,5 @@
 using System;
 using System.Diagnostics;
-using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
 
@@ -92,7 +91,7 @@ namespace VulkanCore
         /// <param name="pointer">The unmanaged function pointer to convert.</param>
         /// <returns>An instance of the specified delegate type.</returns>
         public static TDelegate GetDelegateForFunctionPointer<TDelegate>(IntPtr pointer)
-            => Marshal.GetDelegateForFunctionPointer<TDelegate>(pointer);
+            => (TDelegate)(object)Marshal.GetDelegateForFunctionPointer(pointer, typeof(TDelegate));
 
         /// <summary>
         /// Converts a delegate of a specified type to a function pointer that is callable from
@@ -105,7 +104,7 @@ namespace VulkanCore
         /// underlying managed delegate.
         /// </returns>
         public static IntPtr GetFunctionPointerForDelegate<TDelegate>(TDelegate @delegate)
-            => Marshal.GetFunctionPointerForDelegate(@delegate);
+            => Marshal.GetFunctionPointerForDelegate((Delegate)(object)@delegate);
 
         /// <summary>
         /// Copies a value of type <typeparamref name="T"/> to the given location.
@@ -114,7 +113,7 @@ namespace VulkanCore
         /// <param name="srcPointer">A pointer to the value to copy.</param>
         /// <param name="value">The location to copy to.</param>
         public static void Read<T>(IntPtr srcPointer, ref T value)
-            => Unsafe.Copy(ref value, srcPointer.ToPointer());
+            => value = (T)Marshal.PtrToStructure(srcPointer, typeof(T));
 
         /// <summary>
         /// Copies values of type <typeparamref name="T"/> to the given location.
@@ -127,9 +126,18 @@ namespace VulkanCore
             if (values == null || values.Length == 0) return;
 
             int stride = SizeOf<T>();
-            long size = stride * values.Length;
-            void* dstPtr = Unsafe.AsPointer(ref values[0]);
-            System.Buffer.MemoryCopy(srcPointer.ToPointer(), dstPtr, size, size);
+            long size = (long)stride * values.Length;
+
+            GCHandle handle = GCHandle.Alloc(values, GCHandleType.Pinned);
+            try
+            {
+                void* dstPtr = handle.AddrOfPinnedObject().ToPointer();
+                MemoryCopy(srcPointer.ToPointer(), dstPtr, size);
+            }
+            finally
+            {
+                handle.Free();
+            }
         }
 
         /// <summary>
@@ -139,7 +147,7 @@ namespace VulkanCore
         /// <param name="dstPointer">The location to copy to.</param>
         /// <param name="value">A reference to the value to copy.</param>
         public static void Write<T>(IntPtr dstPointer, ref T value)
-            => Unsafe.Copy(dstPointer.ToPointer(), ref value);
+            => Marshal.StructureToPtr(value, dstPointer, false);
 
         /// <summary>
         /// Copies values of type <typeparamref name="T"/> to the given location.
@@ -153,9 +161,18 @@ namespace VulkanCore
             if (values == null || values.Length == 0) return;
 
             int stride = SizeOf<T>();
-            long size = stride * values.Length;
-            void* srcPtr = Unsafe.AsPointer(ref values[0]);
-            System.Buffer.MemoryCopy(srcPtr, dstPointer.ToPointer(), size, size);
+            long size = (long)stride * values.Length;
+
+            GCHandle handle = GCHandle.Alloc(values, GCHandleType.Pinned);
+            try
+            {
+                void* srcPtr = handle.AddrOfPinnedObject().ToPointer();
+                MemoryCopy(srcPtr, dstPointer.ToPointer(), size);
+            }
+            finally
+            {
+                handle.Free();
+            }
         }
 
         /// <summary>
@@ -163,7 +180,7 @@ namespace VulkanCore
         /// </summary>
         /// <typeparam name="T">The type of object whose size is retrieved.</typeparam>
         /// <returns>The size of an object of type <typeparamref name="T"/>.</returns>
-        public static int SizeOf<T>() => Unsafe.SizeOf<T>();
+        public static int SizeOf<T>() => Marshal.SizeOf(typeof(T));
 
         /// <summary>
         /// Casts the gived object to the specified type.
@@ -171,7 +188,16 @@ namespace VulkanCore
         /// <typeparam name="T">The type which the object will be cast to.</typeparam>
         /// <param name="obj">The object to cast.</param>
         /// <returns>The original object, casted to the given type.</returns>
-        public static T As<T>(object obj) where T : class => Unsafe.As<T>(obj);
+        public static T As<T>(object obj) where T : class => (T)obj;
+
+        private static void MemoryCopy(void* srcPointer, void* dstPointer, long byteCount)
+        {
+            byte* src = (byte*)srcPointer;
+            byte* dst = (byte*)dstPointer;
+
+            for (long i = 0; i < byteCount; i++)
+                dst[i] = src[i];
+        }
 
         /// <summary>
         /// Utilities for interoping with strings.
@@ -194,7 +220,13 @@ namespace VulkanCore
                 while (*walkPtr != 0) walkPtr++;
 
                 // Decode UTF-8 bytes to string.
-                return Encoding.UTF8.GetString(pointer, (int)(walkPtr - pointer));
+                int byteCount = (int)(walkPtr - pointer);
+                var bytes = new byte[byteCount];
+
+                for (int i = 0; i < byteCount; i++)
+                    bytes[i] = pointer[i];
+
+                return Encoding.UTF8.GetString(bytes, 0, byteCount);
             }
 
             /// <summary>
@@ -282,7 +314,7 @@ namespace VulkanCore
             /// <returns>
             /// The maximum number of bytes produced by encoding the specified number of characters.
             /// </returns>
-            public static int GetMaxByteCount(string value) => value == null 
+            public static int GetMaxByteCount(string value) => value == null
                 ? 0
                 : Encoding.UTF8.GetMaxByteCount(value.Length + 1); // +1 for null-terminator.
         }
@@ -304,7 +336,7 @@ namespace VulkanCore
             public static IntPtr AllocToPointer<T>(ref T value) where T : struct
             {
                 IntPtr ptr = Alloc<T>();
-                Unsafe.Copy(ptr.ToPointer(), ref value);
+                Write(ptr, ref value);
                 return ptr;
             }
 
@@ -323,7 +355,8 @@ namespace VulkanCore
                 if (!value.HasValue) return IntPtr.Zero;
 
                 IntPtr ptr = Alloc<T>();
-                Unsafe.Write(ptr.ToPointer(), value.Value);
+                T val = value.Value;
+                Write(ptr, ref val);
                 return ptr;
             }
 
@@ -345,13 +378,7 @@ namespace VulkanCore
                 int totalSize = values.Length * structSize;
                 IntPtr ptr = Alloc(totalSize);
 
-                var walk = (byte*)ptr;
-                for (int i = 0; i < values.Length; i++)
-                {
-                    Unsafe.Copy(walk, ref values[i]);
-                    walk += structSize;
-                }
-
+                Write(ptr, values);
                 return ptr;
             }
         }
@@ -359,6 +386,31 @@ namespace VulkanCore
         // Using actual managed thread id is not possible in .NET Standard 1.3
         // because the API is missing. If the library is upgraded to .NET Standard 2.0,
         // it should be reworked to use that instead.
+
+        /// <summary>
+        /// Contains information about an unmanaged memory allocation or free operation.
+        /// </summary>
+        public sealed class DebugMemoryEventArgs : EventArgs
+        {
+            /// <summary>
+            /// Initializes a new instance of the <see cref="DebugMemoryEventArgs"/> class.
+            /// </summary>
+            public DebugMemoryEventArgs(Guid threadId, IntPtr pointer)
+            {
+                ThreadId = threadId;
+                Pointer = pointer;
+            }
+
+            /// <summary>
+            /// Gets the per-thread unique identifier.
+            /// </summary>
+            public Guid ThreadId { get; private set; }
+
+            /// <summary>
+            /// Gets the unmanaged memory pointer.
+            /// </summary>
+            public IntPtr Pointer { get; private set; }
+        }
 
         [ThreadStatic] private static Guid? _threadId;
 
@@ -371,17 +423,17 @@ namespace VulkanCore
         /// <summary>
         /// Occurs when unmanaged memory is allocated in Debug mode.
         /// </summary>
-        public static event EventHandler<(Guid, IntPtr)> OnDebugAlloc;
+        public static event EventHandler<DebugMemoryEventArgs> OnDebugAlloc;
 
         /// <summary>
         /// Occurs when unmanaged memory is freed in Debug mode.
         /// </summary>
-        public static event EventHandler<(Guid, IntPtr)> OnDebugFree;
+        public static event EventHandler<DebugMemoryEventArgs> OnDebugFree;
 
         [Conditional("DEBUG")]
-        private static void RaiseAlloc(IntPtr ptr) => OnDebugAlloc?.Invoke(null, (ThreadId, ptr));
+        private static void RaiseAlloc(IntPtr ptr) => OnDebugAlloc?.Invoke(null, new DebugMemoryEventArgs(ThreadId, ptr));
 
         [Conditional("DEBUG")]
-        private static void RaiseFree(IntPtr ptr) => OnDebugFree?.Invoke(null, (ThreadId, ptr));
+        private static void RaiseFree(IntPtr ptr) => OnDebugFree?.Invoke(null, new DebugMemoryEventArgs(ThreadId, ptr));
     }
 }

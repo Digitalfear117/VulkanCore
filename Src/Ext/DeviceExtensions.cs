@@ -56,8 +56,10 @@ namespace VulkanCore.Ext
         internal static DebugReportObjectTypeExt GetTypeForObject<T>(T obj)
         {
             string name = typeof(T).Name;
-            bool success = Enum.TryParse<DebugReportObjectTypeExt>(name, out var type);
-            return success ? type : DebugReportObjectTypeExt.Unknown;
+            if (!Enum.IsDefined(typeof(DebugReportObjectTypeExt), name))
+                return DebugReportObjectTypeExt.Unknown;
+
+            return (DebugReportObjectTypeExt)Enum.Parse(typeof(DebugReportObjectTypeExt), name);
         }
 
         /// <summary>

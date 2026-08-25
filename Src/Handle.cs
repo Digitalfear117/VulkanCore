@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 
 namespace VulkanCore
 {
@@ -99,7 +98,16 @@ namespace VulkanCore
         /// <param name="values">A sequence to create an array from.</param>
         /// <returns>An array that contains the pointers to the input handles.</returns>
         public static IntPtr[] ToHandleArray(this IEnumerable<VulkanHandle<IntPtr>> values)
-            => values.Select(val => val.Handle).ToArray();
+        {
+            if (values == null)
+                throw new ArgumentNullException(nameof(values));
+
+            var handles = new List<IntPtr>();
+            foreach (VulkanHandle<IntPtr> value in values)
+                handles.Add(value.Handle);
+
+            return handles.ToArray();
+        }
 
         /// <summary>
         /// Creates an array of pointers from the sequence of <see cref="VulkanHandle{THandle}"/> types.
@@ -107,6 +115,15 @@ namespace VulkanCore
         /// <param name="values">A sequence to create an array from.</param>
         /// <returns>An array that contains the pointers to the input handles.</returns>
         public static long[] ToHandleArray(this IEnumerable<VulkanHandle<long>> values)
-            => values.Select(val => val.Handle).ToArray();
+        {
+            if (values == null)
+                throw new ArgumentNullException(nameof(values));
+
+            var handles = new List<long>();
+            foreach (VulkanHandle<long> value in values)
+                handles.Add(value.Handle);
+
+            return handles.ToArray();
+        }
     }
 }
